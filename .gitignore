@@ -1,0 +1,4 @@
+bin/*
+obj/*.d
+obj/*.o
+.vscode/*
