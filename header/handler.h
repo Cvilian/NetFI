@@ -13,7 +13,6 @@
 #define EXIT_WITH_RUNERROR(reason, ...) do { \
 	printf("\n " reason "\n", ##__VA_ARGS__); \
     WRITE_LOG(reason, ##__VA_ARGS__); \
-    pump::clearNetFI(); \
 	exit(1); \
 } while(0)
 
@@ -29,14 +28,11 @@
 }
 
 static const std::string log_dir = "/usr/local/etc/NetFI/logDIR/";
-static const std::string save_dir = "/usr/local/etc/NetFI/streamDIR/";
 
 namespace pump
 {
 
     std::string currTime();
-
-    void clearNetFI();
 
     class EventHandler
     {
@@ -55,8 +51,8 @@ namespace pump
 
         private:
 
-            EventHandlerCallback h_InterruptedHandler;
-            void* h_InterruptedCookie;
+            EventHandlerCallback h_interrupt_handler;
+            void* h_interrupt_cookie;
 
             static void handlerRoutine(int signum);
 

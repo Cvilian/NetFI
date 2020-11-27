@@ -28,14 +28,13 @@ namespace pump
 
     static void onInterrupted(void* cookie)
     {
-        bool* shouldStop = (bool*)cookie;
-        *shouldStop = true;
+        bool* stop = (bool*)cookie;
+        *stop = true;
     }
 
     static void stop_signal_callback_handler(int signum) 
     {
         printf("\n**All Stop**================================================\n");
-        clearNetFI();
         exit(signum);
     }
 
@@ -581,7 +580,8 @@ namespace pump
         // ZERO WINDOW PROBE
         if (seglen == 1
         && seq == fwd->nextseq
-        && rev->win == 0){
+        && rev->win == 0)
+        {
             fwd->a_flags |= TCP_A_ZERO_WINDOW_PROBE;
             fwd->st_tcp.a_zero_window_probe++;
             goto retrans_check;
@@ -589,7 +589,8 @@ namespace pump
 
         // ZERO WINDOW
         if (win == 0
-        && (!(isRST || isFIN || isSYN))){
+        && (!(isRST || isFIN || isSYN)))
+        {
             fwd->a_flags |= TCP_A_ZERO_WINDOW;
             fwd->st_tcp.a_zero_window++;
         }
@@ -597,7 +598,8 @@ namespace pump
         // LOST SEGMENT
         if (fwd->nextseq
         && seq > fwd->nextseq
-        && !isRST){
+        && !isRST)
+        {
             fwd->a_flags |= TCP_A_LOST_PACKET;
             fwd->st_tcp.a_lost_segment++;
             fwd->valid_bif = false;
@@ -606,7 +608,8 @@ namespace pump
         // KEEP ALIVE
         if (seglen <= 1
         && !(isFIN || isSYN || isRST)
-        && fwd->nextseq - 1 == seq){
+        && fwd->nextseq - 1 == seq)
+        {
             fwd->a_flags |= TCP_A_KEEP_ALIVE;
             fwd->st_tcp.a_keep_alive++;
         }
@@ -617,7 +620,8 @@ namespace pump
         && win != fwd->win
         && seq == fwd->nextseq
         && ack == fwd->lastack
-        && !(isSYN || isFIN || isRST)) {
+        && !(isSYN || isFIN || isRST)) 
+        {
             fwd->a_flags |= TCP_A_WINDOW_UPDATE;
             fwd->st_tcp.a_window_update++;
         }
@@ -626,7 +630,8 @@ namespace pump
         if (seglen > 0
         && rev->win_scale != -1
         && seq + seglen == (rev->lastack + (rev->win << (rev->win_scale == -2 ? 0 : rev->win_scale)))
-        && !(isSYN || isFIN || isRST)){
+        && !(isSYN || isFIN || isRST))
+        {
             fwd->a_flags |= TCP_A_WINDOW_FULL;
             fwd->st_tcp.a_window_full++;
         }
@@ -638,7 +643,8 @@ namespace pump
         && seq == fwd->nextseq
         && ack == fwd->lastack
         && (rev->a_flags & TCP_A_KEEP_ALIVE)
-        && !(isSYN || isFIN || isRST)) {
+        && !(isSYN || isFIN || isRST)) 
+        {
             fwd->a_flags |= TCP_A_KEEP_ALIVE_ACK;
             fwd->st_tcp.a_keep_alive_ack++;
             goto retrans_check;
@@ -651,7 +657,8 @@ namespace pump
         && seq == fwd->nextseq
         && ack == fwd->lastack
         && (rev->a_flags & TCP_A_ZERO_WINDOW_PROBE)
-        && !(isSYN || isFIN || isRST)) {
+        && !(isSYN || isFIN || isRST)) 
+        {
             fwd->a_flags |= TCP_A_ZERO_WINDOW_PROBE_ACK;
             fwd->st_tcp.a_zero_window_probe_ack++;
             goto retrans_check;
@@ -663,7 +670,8 @@ namespace pump
         && win == fwd->win
         && seq == fwd->nextseq
         && ack == fwd->lastack
-        && !(isSYN || isFIN || isRST)) {
+        && !(isSYN || isFIN || isRST)) 
+        {
             fwd->a_flags |= TCP_A_DUPLICATE_ACK;
             fwd->st_tcp.a_dup_ack++;
             fwd->dup_ack_cnt++;
@@ -671,14 +679,16 @@ namespace pump
 
         retrans_check:
 
-        if (ack != fwd->lastack ) {
+        if (ack != fwd->lastack ) 
+        {
             fwd->dup_ack_cnt = 0;
         }
 
         // ACKED UNSEEN
         if (rev->max_seq_acked
         && ack > rev->max_seq_acked
-        && isACK) {
+        && isACK) 
+        {
             fwd->a_flags |= TCP_A_ACK_LOST_PACKET;
             rev->max_seq_acked = rev->nextseq;
             fwd->st_tcp.a_acked_unseen++;
@@ -686,7 +696,8 @@ namespace pump
 
         // RETRANSMISSION/FAST RETRANSMISSION/OUT OF ORDER
         if ((seglen > 0 || isSYN || isFIN)
-        && !(fwd->a_flags & TCP_A_KEEP_ALIVE)){
+        && !(fwd->a_flags & TCP_A_KEEP_ALIVE))
+        {
             bool seq_not_advanced = fwd->nextseq 
                                     && (seq < fwd->nextseq) 
                                     && !(seglen > 1 && fwd->nextseq - 1 == seq);
@@ -697,7 +708,8 @@ namespace pump
             if (seq_not_advanced
             && rev->dup_ack_cnt >= 2
             && rev->lastack == seq
-            && t < 20000 ) {
+            && t < 20000 ) 
+            {
                 fwd->a_flags |= TCP_A_FAST_RETRANSMISSION;
                 fwd->st_tcp.a_fast_retrans++;
                 goto seq_update;
@@ -708,7 +720,8 @@ namespace pump
 
             if (seq_not_advanced
             && t < ooo_thres
-            && fwd->nextseq != seq + seglen ){
+            && fwd->nextseq != seq + seglen )
+            {
                 fwd->a_flags |= TCP_A_OUT_OF_ORDER;
                 fwd->st_tcp.a_out_of_order++;
                 goto seq_update;
@@ -716,13 +729,15 @@ namespace pump
 
             if (seglen > 0
             && rev->lastack
-            && seq + seglen <= rev->lastack){
+            && seq + seglen <= rev->lastack)
+            {
                 fwd->a_flags |= TCP_A_SPURIOUS_RETRANSMISSION;
                 fwd->st_tcp.a_spur_retrans++;
                 goto seq_update;
             }
 
-            if (seq_not_advanced) {
+            if (seq_not_advanced) 
+            {
                 fwd->a_flags |= TCP_A_RETRANSMISSION;
                 fwd->st_tcp.a_retrans++;
                 time_delta(&fwd->rto_tv, &ref_tv, &fwd->nextseq_time);
@@ -758,14 +773,16 @@ namespace pump
             ual->nextseq = nextseq;
         }
 
-        if ((nextseq > fwd->nextseq || !fwd->nextseq) && !(fwd->a_flags & TCP_A_ZERO_WINDOW_PROBE))
+        if ((nextseq > fwd->nextseq || !fwd->nextseq) 
+        && !(fwd->a_flags & TCP_A_ZERO_WINDOW_PROBE))
         {
             fwd->nextseq = nextseq;
             time_update(&fwd->nextseq_time, &ref_tv);   
         }
 
         if((seq == fwd->max_seq_acked || !fwd->max_seq_acked)
-        && !(fwd->a_flags & TCP_A_ZERO_WINDOW_PROBE)) {
+        && !(fwd->a_flags & TCP_A_ZERO_WINDOW_PROBE)) 
+        {
             fwd->max_seq_acked = nextseq;
         }
 
@@ -922,7 +939,7 @@ namespace pump
     }
 
     Tracker::Tracker(timeval tv)
-	{
+    {
         tr_init_tv = tv;
         tr_base_tv = {0,0};
         tr_print_tv = {0,0};
@@ -933,7 +950,7 @@ namespace pump
         tr_flow_cnt = 0;
         tr_totalbytes = 0;
         registerEvent();
-	}
+    }
 
     Tracker::~Tracker() 
 	{
@@ -971,11 +988,6 @@ namespace pump
                                 .last_syn = {0, 0},
                                 .client = client,
                                 .server = server};
-
-        std::string sd = save_dir + std::to_string(tr_flow_cnt) + "/";
-
-        if(access(sd.c_str(), 0) == -1)
-            mkdir(sd.c_str(), 0777);
 
         return tr_flow_cnt++;
     }
@@ -1015,14 +1027,15 @@ namespace pump
 
         gettimeofday(&curr_tv, NULL);
 
-        if (tr_pkt_cnt >= config->maxPacket || time_diff(&ref_tv, &tr_base_tv)/1000000 >= (int64_t)config->maxTime)
+        if (tr_pkt_cnt >= config->maxPacket 
+        || time_diff(&ref_tv, &tr_base_tv)/1000000 >= (int64_t)config->maxTime)
         {
             raise(SIGINT);
             return;
         }
 
         tr_totalbytes += pk_len;
-		tr_pkt_cnt++;
+        tr_pkt_cnt++;
 
         if (delta_time == 0 || time_diff(&ref_tv, &tr_print_tv) >= 31250)
         {
@@ -1222,6 +1235,12 @@ namespace pump
         }
         fclose(f);             
         printf("\n**Total Stream#**=========================================== (%u)", tr_flow_cnt);
+    }
+
+    void Tracker::close()
+    {
+        tr_flowtable.clear();
+        tr_initiated.clear();
         tr_smap.clear(); 
     }
 

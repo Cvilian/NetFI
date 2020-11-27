@@ -87,7 +87,6 @@ void doNetFIOnLive(pump::LiveReader* rdr, struct pump::CaptureConfig* config)
         sleep(1);
 
     rdr->stopCapture();
-    rdr->close();
 
     if(!(config->quitemode)) printf("\n");
     pump::print_progressM(tracker.getTotalPacket());
@@ -98,24 +97,25 @@ void doNetFIOnLive(pump::LiveReader* rdr, struct pump::CaptureConfig* config)
         tracker.registerEvent();
         tracker.saveStats(config);
     }
+
+    tracker.close();
+    delete rdr;
 }
 
 void doNetFIOnPcap(std::string pcapFile, struct pump::CaptureConfig* config)
 {
+    pump::PcapReader* rdr = pump::PcapReader::getReader(pcapFile.c_str());
 
-    pump::PcapReader rdr(pcapFile.c_str());
-    if (!rdr.open())
+    if (!rdr->open())
         EXIT_WITH_CONFERROR("###ERROR : Could not open input pcap file");
 
     pump::Tracker tracker(init_tv);
     pump::Packet packet;
 
-    while(rdr.getNextPacket(packet) && !tracker.isTerminated())
+    while(rdr->getNextPacket(packet) && !tracker.isTerminated())
     {
         tracker.parsePacket(&packet, config);
     }
-
-    rdr.close();
 
     if(!(config->quitemode)) printf("\n");
     pump::print_progressM(tracker.getTotalPacket());
@@ -126,6 +126,9 @@ void doNetFIOnPcap(std::string pcapFile, struct pump::CaptureConfig* config)
         tracker.registerEvent();
         tracker.saveStats(config);
     }
+
+    tracker.close();
+    delete rdr;
 }
 
 int main(int argc, char* argv[])
@@ -204,9 +207,6 @@ int main(int argc, char* argv[])
         .outputFileTo = outputFileTo
     };
 
-    if(access(save_dir.c_str(), 0) == -1)
-        mkdir(save_dir.c_str(), 0777);
-
     if (readPacketsFromPcap != "")
     {
         doNetFIOnPcap(readPacketsFromPcap, &config);
@@ -220,7 +220,6 @@ int main(int argc, char* argv[])
 
         doNetFIOnLive(rdr, &config);
     }
-    //pump::clearNetFI();
     printf(" **All Done**\n");
     WRITE_LOG("===Process Finished");
     return 0;

@@ -45,8 +45,6 @@ namespace pump
 
     uint32_t fnv_hash(ScalarBuffer vec[], size_t vecSize);
 
-    int64_t time_diff(timeval* tv1, timeval* tv2);
-
     void update_ts(time_stat* ts, timeval* tv);
 
     bool time_cmp(timeval* tv1, timeval* tv2);

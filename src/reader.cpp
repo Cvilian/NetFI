@@ -19,8 +19,19 @@ namespace pump
 
     PcapReader::PcapReader(const char* pcapfile) : Reader()
     {
-        prdr_datasrc = new char[strlen(pcapfile)+1];
-        strcpy(prdr_datasrc, pcapfile);
+        int pcapname_len = strlen(pcapfile) + 1;
+        prdr_datasrc = (char*)malloc(pcapname_len);
+        strncpy(prdr_datasrc, pcapfile, pcapname_len);
+    }
+
+    PcapReader* PcapReader::getReader(const char* pcapfile)
+    {
+        const char* file_extension = strrchr(pcapfile, '.');
+
+        if (file_extension == NULL || strcmp(file_extension, ".pcap") != 0)
+            EXIT_WITH_CONFERROR("###ERROR : File extension should be a .pcap");
+
+        return new PcapReader(pcapfile);
     }
 
     bool PcapReader::open()
@@ -77,7 +88,9 @@ namespace pump
     void PcapReader::close()
     {
         if (prdr_datasrc != NULL)
-            delete [] prdr_datasrc;
+        {
+            free(prdr_datasrc);
+        }
 
         if (rdr_descriptor != NULL)
         {
@@ -157,9 +170,9 @@ namespace pump
         lrdr_datasrc = NULL;
         lrdr_linktype = LINKTYPE_ETHERNET;
 
-        int strLength = strlen(pInterface->name)+1;
-        lrdr_datasrc = new char[strLength];
-        strncpy((char*)lrdr_datasrc, pInterface->name, strLength);
+        int ifacename_len = strlen(pInterface->name)+1;
+        lrdr_datasrc = (char*)malloc(ifacename_len);
+        strncpy((char*)lrdr_datasrc, pInterface->name, ifacename_len);
 
         while (pInterface->addresses != NULL)
         {
@@ -234,7 +247,9 @@ namespace pump
     void LiveReader::close()
     {
         if (lrdr_datasrc != NULL)
-            delete [] lrdr_datasrc;
+        {
+            free(lrdr_datasrc);
+        }
 
         if (rdr_descriptor != NULL)
         {

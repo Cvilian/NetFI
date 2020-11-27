@@ -59,6 +59,8 @@ namespace pump
 
             ~PcapReader() { close(); }
 
+            static PcapReader* getReader(const char* pcapfile);
+
             bool open();
 
             bool getNextPacket(Packet& packet);

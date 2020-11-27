@@ -262,6 +262,8 @@ namespace pump
 
             void saveStats(CaptureConfig* config);
 
+            void close();
+
     };
 
 }

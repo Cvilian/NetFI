@@ -29,36 +29,6 @@ namespace pump
         return std::string(buff);
     }
 
-    void clearNetFI()
-    {
-        DIR *dir, *sub_dir;
-        dirent *d, *sd;
-        char sd_path[256] = {0}, file_path[512] = {0};
-
-        if((dir = opendir(save_dir.c_str())) != NULL)
-        {
-            while((d = readdir(dir)) != NULL)
-            {
-                if(*(d->d_name) == '.') continue;
-
-                sprintf(sd_path, "%s%s", save_dir.c_str(), d->d_name);
-
-                if((sub_dir = opendir(sd_path)) != NULL)
-                {
-                    while((sd = readdir(sub_dir)) != NULL)
-                    {
-                        sprintf(file_path, "%s%s/%s", save_dir.c_str(), d->d_name, sd->d_name);
-                        remove(file_path);
-                    }
-                    closedir(sub_dir);
-                }
-                rmdir(sd_path);
-            }
-            closedir(dir);
-        }
-        rmdir(save_dir.c_str());
-    }
-
     void EventHandler::handlerRoutine(int signum)
     {
         switch (signum)
@@ -67,10 +37,10 @@ namespace pump
             {
                 pthread_mutex_lock(&mutex);
 
-                if (EventHandler::getInstance().h_InterruptedHandler != NULL)
-                    EventHandler::getInstance().h_InterruptedHandler(EventHandler::getInstance().h_InterruptedCookie);
+                if (EventHandler::getInstance().h_interrupt_handler != NULL)
+                    EventHandler::getInstance().h_interrupt_handler(EventHandler::getInstance().h_interrupt_cookie);
 
-                EventHandler::getInstance().h_InterruptedHandler = NULL;
+                EventHandler::getInstance().h_interrupt_handler = NULL;
 
                 pthread_mutex_unlock(&mutex);
                 return;
@@ -84,8 +54,8 @@ namespace pump
 
     void EventHandler::onInterrupted(EventHandlerCallback handler, void* cookie)
     {
-        h_InterruptedHandler = handler;
-        h_InterruptedCookie = cookie;
+        h_interrupt_handler = handler;
+        h_interrupt_cookie = cookie;
 
         struct sigaction action;
         memset(&action, 0, sizeof(struct sigaction));
