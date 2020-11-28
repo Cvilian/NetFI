@@ -45,6 +45,11 @@ namespace pump
         return hash;
     }
 
+    void parseIPV4(char* s, uint32_t ip_addr)
+    {
+        sprintf(s, "%d.%d.%d.%d", ip_addr & 0xFF, (ip_addr >> 8) & 0xFF, (ip_addr >> 16) & 0xFF, (ip_addr >> 24) & 0xFF);
+    }
+
     bool time_cmp(timeval* tv1, timeval* tv2)
     {
         if (tv1->tv_sec == tv2->tv_sec) return tv1->tv_usec > tv2->tv_usec;

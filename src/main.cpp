@@ -220,7 +220,7 @@ int main(int argc, char* argv[])
 
         doNetFIOnLive(rdr, &config);
     }
-    printf(" **All Done**\n");
+    printf("**All Done**\n");
     WRITE_LOG("===Process Finished");
     return 0;
 }

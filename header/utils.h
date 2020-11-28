@@ -45,6 +45,8 @@ namespace pump
 
     uint32_t fnv_hash(ScalarBuffer vec[], size_t vecSize);
 
+    void parseIPV4(char* s, uint32_t ip_addr);
+
     void update_ts(time_stat* ts, timeval* tv);
 
     bool time_cmp(timeval* tv1, timeval* tv2);

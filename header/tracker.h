@@ -238,7 +238,7 @@ namespace pump
 
             int addNewStream(pump::Packet* packet);
 
-            int getStreamNumber(pump::Packet* packet, CaptureConfig* config);
+            int getStreamNumber(pump::Packet* packet);
 
         public:
 

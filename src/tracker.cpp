@@ -45,14 +45,21 @@ namespace pump
         Flow* fwd = &ss->client;
         Flow* rev = &ss->server;
 
-        sprintf(cIP, "%d.%d.%d.%d", (fwd->ip >> 24) & 0xFF, (fwd->ip >> 16) & 0xFF, (fwd->ip >>  8) & 0xFF, (fwd->ip) & 0xFF);
-        sprintf(sIP, "%d.%d.%d.%d", (rev->ip >> 24) & 0xFF, (rev->ip >> 16) & 0xFF, (rev->ip >>  8) & 0xFF, (rev->ip) & 0xFF);
+        parseIPV4(cIP, fwd->ip);
+        parseIPV4(sIP, rev->ip);
 
         printf("[Client] %s:%d", cIP, fwd->port);
         for (int i = strlen(cIP); i < 15; i++) printf(" ");
         uint16_t temp = fwd->port;
         for (; temp < 10000; temp *= 10) printf(" ");
-        printf(" <-------------------> ");
+        printf(" <----------");
+        if(ss->proto & PROTO_UDP) printf("---UDP----");
+        else if(ss->proto & PROTO_TCP) printf("---TCP----");
+        else if(ss->proto & PROTO_ICMP) printf("--ICMP--");
+        else if(ss->proto & PROTO_IPv4) printf("---IP---");
+        else if(ss->proto & PROTO_ETHERNET) printf("Ethernet");
+        else printf("Unknown-");
+        printf("---------> ");
         for (int i = strlen(sIP); i < 15; i++) printf(" ");
         temp = rev->port;
         for (; temp < 10000; temp *= 10) printf(" ");
@@ -992,7 +999,7 @@ namespace pump
         return tr_flow_cnt++;
     }
 
-    int Tracker::getStreamNumber(pump::Packet* packet, CaptureConfig* config)
+    int Tracker::getStreamNumber(pump::Packet* packet)
     {
         uint32_t hash = hashStream(packet);
 
@@ -1004,14 +1011,12 @@ namespace pump
 
             tr_flowtable[hash] = addNewStream(packet);
             tr_initiated[hash] = true;
-            if(!config->quitemode) print_progressN(&tr_smap[tr_flowtable[hash]]);
         }
         else
         {
             if (isSyn && tr_initiated[hash] == false)
             {
                 tr_flowtable[hash] = addNewStream(packet);
-               if(!config->quitemode) print_progressN(&tr_smap[tr_flowtable[hash]]);
             }
             tr_initiated[hash] = isSyn;
         }
@@ -1052,7 +1057,7 @@ namespace pump
         && !packet->isTypeOf(PROTO_UDP))
             return;
 
-        int ss_idx = getStreamNumber(packet, config);
+        int ss_idx = getStreamNumber(packet);
 
         if (ss_idx == -1) return;
 
@@ -1093,6 +1098,12 @@ namespace pump
         {
             // TODO : parseUdp(packet, ss, fwd, rev);
             ss->proto |= PROTO_UDP;
+        }
+
+        if(!config->quitemode
+        && fwd->st_common.pkt_cnt + rev->st_common.pkt_cnt == 1)
+        {
+            print_progressN(ss);
         }
     }   
 
