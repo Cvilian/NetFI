@@ -49,6 +49,19 @@ $ sudo make all
         -h               : Displays this help message and exits
 
 
+#### Network inspection with Pcap File:
+    $ sudo netfi -r example.pcap
+
+It will print the session information of corresponding communicating peers. 
+
+
+![ex_screenshot](./img/test.png)
+
+
+#### Network inspection on Live Network Interface (and save statistics in example.csv):
+    $ sudo netfi -i eth0 -w example.csv
+
+
 ## License
 NetFI is provided under a BSD 3-Clause License.
 
@@ -57,7 +70,7 @@ NetFI is provided under a BSD 3-Clause License.
 Our tool can offer total 211 flow features listed in the table below:
 
     +------+--------------------------+-----------------------------------------------------------------------------------+---------+
-    | No.   | Notation                | Description                                                                       | Type    |
+    | No.  | Notation                 | Description                                                                       | Type    |
     +======+==========================+===================================================================================+=========+
     | 1.   | src                      | Source host                                                                       | IP:port |
     | 2.   | dst                      | Destination host                                                                  | IP:port |
