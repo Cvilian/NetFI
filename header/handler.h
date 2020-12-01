@@ -8,6 +8,8 @@
 #ifndef PUMP_HANDLER
 #define PUMP_HANDLER
 
+#include <stdio.h>
+
 #include <string>
 
 #define EXIT_WITH_RUNERROR(reason, ...) do { \
