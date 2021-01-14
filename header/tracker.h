@@ -2,7 +2,7 @@
  * 
  * routines to calculate stats of each IP flow
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #ifndef PUMP_TRACKER
@@ -43,30 +43,34 @@
 namespace pump
 {
 
+    /* Data structure to hold capture preferences */
     struct CaptureConfig
     {
-        uint32_t maxPacket;
-        uint32_t maxTime;
-        bool quitemode;
-        bool mark_null;
-        std::string outputFileTo;
+        uint32_t maxPacket;         /* Maximum #packets to be captured */ 
+        uint32_t maxTime;           /* Duration limit */
+        bool quitemode;             /* When set, do not display sniffed connections*/
+        bool mark_null;             /* When set, mark a N/A value as '-', instead of a zero value*/
+        std::string outputFileTo;   /* Output file for the data to be written */
     };
 
+    /* Data structure to contain packet-level features */
     struct CommonStat
     {
         uint32_t pkt_cnt = 0;
-        timeval base_tv;
+        timeval base_tv = {0,0};
         timeval last_tv;
         numeric_stat<uint16_t> pktlen;
         time_stat intarr_time;
     };
 
+    /* Data structure to contain Ethernet-layer-level features */
     struct EthStat
     {
         uint32_t pad_cnt = 0;
         numeric_stat<uint16_t> padlen;
     };
 
+    /* Data structure to contain IPv4-layer-level features */
     struct IPv4Stat
     {
         uint32_t df_cnt = 0;
@@ -81,6 +85,7 @@ namespace pump
         numeric_stat<uint16_t> fragoff;
     };
 
+    /* Data structure to contain ICMP-layer-level features */
     struct IcmpStat
     {
         uint32_t icmp_cnt = 0;
@@ -95,12 +100,14 @@ namespace pump
         uint32_t time_exceeded = 0;
     };
 
+    /* Data structure to contain Transport-layer-level(both TCP and UDP) features */
     struct TransportStat
     {   
         uint32_t has_pay = 0;
         numeric_stat<uint16_t> paylen;
     };
 
+    /* Data structure to contain TCP-layer-level features */
     struct TcpStat
     {
         uint32_t a_ack_none = 0;
@@ -148,6 +155,7 @@ namespace pump
         time_stat rto;
     };   
 
+    /* Data structure that keeps flow data */
     struct Flow 
     {
         CommonStat st_common;
@@ -228,7 +236,7 @@ namespace pump
 
             bool tr_stop;
 
-            timeval tr_init_tv, tr_base_tv, tr_print_tv;
+            timeval tr_base_tv, tr_init_tv, tr_print_tv;
 
             std::map<uint32_t, int> tr_flowtable;
 
@@ -253,8 +261,6 @@ namespace pump
             uint32_t getTotalStream() { return tr_flow_cnt; }
 
             uint64_t getTotalByteLen() { return tr_totalbytes; }
-
-            timeval* getStartTime() { return &tr_init_tv; } 
 
             bool isTerminated() {return tr_stop; }
 

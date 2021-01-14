@@ -2,7 +2,7 @@
  *
  * routines for the data packet parsing
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #ifndef PUMP_LAYER_DATA
@@ -20,6 +20,8 @@ namespace pump
 
             DataLayer(uint8_t* data, size_t datalen, Layer* prev_layer) : Layer(data, datalen, prev_layer) { l_proto = PROTO_DATA; }
 
+            virtual ~DataLayer() {};
+
             void dissectData() {}
 
             size_t getHeaderLen() const { return l_datalen; }
@@ -32,6 +34,8 @@ namespace pump
         public:
 
             TrailerLayer(uint8_t* data, size_t datalen, Layer* prev_layer) : Layer(data, datalen, prev_layer) { l_proto = PROTO_TRAILER; }
+
+            virtual ~TrailerLayer() {};
 
             void dissectData() {}
 

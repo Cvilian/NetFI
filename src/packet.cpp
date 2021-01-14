@@ -2,7 +2,7 @@
  * 
  * basic structure of a packet
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #include <endian.h>
@@ -107,10 +107,20 @@ namespace pump
 
     void Packet::clearData()
     {
+        Layer* curr_layer = pk_firstlayer;
+        while(curr_layer != NULL)
+        {
+            Layer* next_layer = curr_layer->getNextLayer();
+            delete curr_layer;
+            curr_layer = next_layer;
+        }
+        
+        /*
         if (pk_data != 0 && pk_delete_data)
         {
             delete[] pk_data;
         }
+        */
     }
 
 }

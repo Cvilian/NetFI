@@ -2,7 +2,7 @@
  * 
  * routines for reading packet from a pcap file or interface
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #include <string.h>

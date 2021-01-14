@@ -2,7 +2,7 @@
  *
  * routines for the ICMP packet parsing
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #include "layer-ip.h"

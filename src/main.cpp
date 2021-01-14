@@ -2,7 +2,7 @@
  * 
  * routines for capturing a series of SSL/TLS record data from TCP data streams
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #include <stdio.h>
@@ -15,13 +15,14 @@
 #include "handler.h"
 #include "tracker.h"
 
+/* Terminate this program when bad options are given */
 #define EXIT_WITH_OPTERROR(reason, ...) do { \
 	printf("\n " reason "\n", ## __VA_ARGS__); \
     printUsage(); \
 	exit(1); \
 } while(0)
 
-timeval init_tv;
+struct timeval init_tv;
 
 static struct option NetFIOptions[] =
 {
@@ -35,15 +36,17 @@ static struct option NetFIOptions[] =
     {0, 0, 0, 0}
 };
 
+/* Structure to handle the packet dump */
 struct PacketArrivedData
 {
     pump::Tracker* tracker;
     struct pump::CaptureConfig* config;
 };
 
+/* Print help and exit */
 void printUsage()
 {
-    printf("\nNetFI - a fast and simple tool to analyze the network flow (Internet Protocol family)\n"
+    printf("\nNetFI - a fast and simple tool to analyze the network flow\n"
     "See https://github.com/Cvilian/NetFI for more information\n\n"
     "Usage: NetFI [options] ...\n"
     "Capture packets:\n"
@@ -65,14 +68,17 @@ void printUsage()
     exit(0);
 }
 
+/* Callback invoked whenever the reader has seen a packet */
 void packetArrive(pump::Packet* packet, pump::LiveReader* rdr, void* cookie)
 {
     PacketArrivedData* data = (PacketArrivedData*)cookie;
     data->tracker->parsePacket(packet, data->config);
 }
 
+/* Start gathering stat info from the discovered network interface */
 void doNetFIOnLive(pump::LiveReader* rdr, struct pump::CaptureConfig* config)
 {
+    // Open the network interface to capture from it
     if (!rdr->open())
         EXIT_WITH_CONFERROR("###ERROR : Could not open the device");
 
@@ -82,51 +88,61 @@ void doNetFIOnLive(pump::LiveReader* rdr, struct pump::CaptureConfig* config)
     data.config = config;
     rdr->startCapture(packetArrive, &data);
 
-    // run in an endless loop until the user presses ctrl+c
+    // Run in an endless loop until the user presses Ctrl+C
     while(!tracker.isTerminated())
         sleep(1);
 
     rdr->stopCapture();
 
     if(!(config->quitemode)) printf("\n");
+
     pump::print_progressM(tracker.getTotalPacket());
     printf(" **%lu Bytes**\n", tracker.getTotalByteLen());
 
+    // Write all stats to the specified file
     if(config->outputFileTo != "")
     {
         tracker.registerEvent();
         tracker.saveStats(config);
     }
 
+    // Close the capture pipe
     tracker.close();
     delete rdr;
 }
 
+/* Start gathering stat info from the discovered network interface */
 void doNetFIOnPcap(std::string pcapFile, struct pump::CaptureConfig* config)
 {
     pump::PcapReader* rdr = pump::PcapReader::getReader(pcapFile.c_str());
 
+    // Open the pcap file to capture from it
     if (!rdr->open())
         EXIT_WITH_CONFERROR("###ERROR : Could not open input pcap file");
 
     pump::Tracker tracker(init_tv);
     pump::Packet packet;
 
+    // Run in an endless loop until the user presses Ctrl+C 
+    // or the program encounters tne end of file
     while(rdr->getNextPacket(packet) && !tracker.isTerminated())
     {
         tracker.parsePacket(&packet, config);
     }
 
     if(!(config->quitemode)) printf("\n");
+
     pump::print_progressM(tracker.getTotalPacket());
     printf(" **%lu Bytes**\n", tracker.getTotalByteLen());
 
+    // Write all stats to the specified file
     if(config->outputFileTo != "")
     {
         tracker.registerEvent();
         tracker.saveStats(config);
     }
 
+    // Close the capture pipe
     tracker.close();
     delete rdr;
 }
@@ -135,9 +151,11 @@ int main(int argc, char* argv[])
 {
     gettimeofday(&init_tv, NULL);
 
+    // Tell the user not to run as root
     if (getuid())
         EXIT_WITH_CONFERROR("###ERROR : Running NetFI requires root privileges!\n");
 
+    // Set the initial values in the capture options
     std::string readPacketsFromPcap = "";
     std::string readPacketsFromInterface = "";
     std::string outputFileTo = "";
@@ -149,6 +167,7 @@ int main(int argc, char* argv[])
     bool mark_null = false;
     char opt = 0;
 
+    // Set the preferences with values from command-line options 
     while((opt = getopt_long (argc, argv, "c:d:i:r:w:qsh", NetFIOptions, &optionIndex)) != -1)
     {
         switch (opt)
@@ -185,14 +204,15 @@ int main(int argc, char* argv[])
         }
     }
 
-    // if no input pcap file or network interface was provided - exit with error
+    // If no input pcap file or network interface was provided - exit with error
     if (readPacketsFromPcap == "" && readPacketsFromInterface == "")
         EXIT_WITH_OPTERROR("###ERROR : Neither interface nor input pcap file were provided");
 
-    // you should choose only one option : pcap or interface - exit with error
+    // Should choose only one option : pcap or interface - exit with error
     if (readPacketsFromPcap != "" && readPacketsFromInterface != "")
         EXIT_WITH_OPTERROR("###ERROR : Choose only one option, pcap or interface");
 
+    // Negative value is not allowed
     if (maxPacket <= 0)
         EXIT_WITH_OPTERROR("###ERROR : #Packet can't be a non-positive integer");
 
@@ -207,6 +227,8 @@ int main(int argc, char* argv[])
         .outputFileTo = outputFileTo
     };
 
+    // Read the user's preferences file, if it exists
+    // Otherwise, open a network interface to capture from it
     if (readPacketsFromPcap != "")
     {
         doNetFIOnPcap(readPacketsFromPcap, &config);
@@ -220,6 +242,7 @@ int main(int argc, char* argv[])
 
         doNetFIOnLive(rdr, &config);
     }
+    
     printf("**All Done**\n");
     WRITE_LOG("===Process Finished");
     return 0;

@@ -2,7 +2,7 @@
  *
  * basic structure of a protocol layer
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #ifndef PUMP_LAYER
@@ -38,6 +38,8 @@ namespace pump
 
             Layer(uint8_t* data, size_t datalen, Layer* prev_layer) :
                 l_data(data), l_datalen(datalen), l_proto(PROTO_UNKNOWN), l_nextlayer(NULL), l_prevlayer(prev_layer) {}
+
+            virtual ~Layer() {};
 
             void setNextLayer(Layer* nextLayer) { l_nextlayer = nextLayer; }
 

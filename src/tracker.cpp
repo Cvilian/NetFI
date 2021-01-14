@@ -2,7 +2,7 @@
  * 
  * routines to calculate stats of each IP flow
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #include <stdio.h>
@@ -22,22 +22,24 @@
 
 namespace pump
 {
-
+    /* Buffer to temporarily store the payload data */
     char pktBUF[maxbuf];
-    timeval curr_tv;
 
+    /* Catch a signal (i.e., SIGINT) */
     static void onInterrupted(void* cookie)
     {
         bool* stop = (bool*)cookie;
         *stop = true;
     }
 
-    static void stop_signal_callback_handler(int signum) 
+    /* Make a clean exit on interrupts */
+    void stop_signal_callback_handler(int signum) 
     {
         printf("\n**All Stop**================================================\n");
         exit(signum);
     }
 
+    /* Print a session info(IP/Port) on stdout */
     void print_progressN(Stream* ss)
     {
         char sIP[16], cIP[16];
@@ -48,6 +50,8 @@ namespace pump
         parseIPV4(cIP, fwd->ip);
         parseIPV4(sIP, rev->ip);
 
+        // A conversation will be displayed as follow:
+        // [Clinet] ip:port <---Protocol---> ip:port [Server]
         printf("[Client] %s:%d", cIP, fwd->port);
         for (int i = strlen(cIP); i < 15; i++) printf(" ");
         uint16_t temp = fwd->port;
@@ -66,39 +70,44 @@ namespace pump
         printf("%s:%d [Server]\n", sIP, rev->port);
     }
 
+    /*
+     * Compute a hash value for a given packet
+     * Packets with the same pair of source/destination IP addresses, port numbers, and protocol (5-tuples)
+     * will belong to the same connection
+     */
     uint32_t hashStream(pump::Packet* packet)
     {
         struct ScalarBuffer vec[5];
 
-        uint16_t portSrc = 0;
-        uint16_t portDst = 0;
+        uint16_t sport = 0;
+        uint16_t dport = 0;
         int srcPosition = 0;
 
         if (packet->isTypeOf(PROTO_TCP))
         {
             pump::TcpLayer* tcpLayer = packet->getLayer<pump::TcpLayer>();
-            portSrc = tcpLayer->getHeader()->sport;
-            portDst = tcpLayer->getHeader()->dport;
+            sport = tcpLayer->getHeader()->sport;
+            dport = tcpLayer->getHeader()->dport;
         }
         else
         {
             pump::UdpLayer* udpLayer = packet->getLayer<pump::UdpLayer>();
-            portSrc = udpLayer->getHeader()->sport;
-            portDst = udpLayer->getHeader()->dport;
+            sport = udpLayer->getHeader()->sport;
+            dport = udpLayer->getHeader()->dport;
         }
 
-        if (portDst < portSrc)
+        if (dport < sport)
         {
             srcPosition = 1;
         }
 
-        vec[0 + srcPosition].buffer = (uint8_t*)&portSrc;
+        vec[0 + srcPosition].buffer = (uint8_t*)&sport;
         vec[0 + srcPosition].len = 2;
-        vec[1 - srcPosition].buffer = (uint8_t*)&portDst;
+        vec[1 - srcPosition].buffer = (uint8_t*)&dport;
         vec[1 - srcPosition].len = 2;
 
         pump::IPv4Layer* ipv4Layer = packet->getLayer<pump::IPv4Layer>();
-        if (portSrc == portDst && ipv4Layer->getHeader()->ip_dst < ipv4Layer->getHeader()->ip_src)
+        if (sport == dport && ipv4Layer->getHeader()->ip_dst < ipv4Layer->getHeader()->ip_src)
         {
             srcPosition = 1;
         }
@@ -113,30 +122,50 @@ namespace pump
         return fnv_hash(vec, 5);
     }
 
+    /* Check whether SYN and ACK flag is 1 and 0, respectively */
     bool isTcpSyn(pump::Packet* packet)
     {
         if (packet->isTypeOf(PROTO_TCP))
         {
             pump::TcpLayer* tcpLayer = packet->getLayer<pump::TcpLayer>();
-            return (tcpLayer->getHeader()->flag_syn == 1) && (tcpLayer->getHeader()->flag_ack == 0);
+            bool isSYN = (tcpLayer->getHeader()->flag_syn == 1);
+            bool isACK = (tcpLayer->getHeader()->flag_ack == 1);
+            return isSYN && !isACK;
         }
 
         return false;
     }
 
+    /* Check whether the packet transmitted by a host who initiates the session */
     bool isClient(pump::Packet* packet, Stream* ss)
     {
         if(ss->client.port != ss->server.port)
         {
             if(packet->isTypeOf(PROTO_TCP))
-                return ss->client.port == (uint16_t)ntohs(packet->getLayer<pump::TcpLayer>()->getHeader()->sport);
+            {
+                uint16_t port = ntohs(packet->getLayer<pump::TcpLayer>()->getHeader()->sport);
+                return ss->client.port == port;
+            }
             else
-                return ss->client.port == (uint16_t)ntohs(packet->getLayer<pump::UdpLayer>()->getHeader()->sport);      
+            {
+                uint16_t port = ntohs(packet->getLayer<pump::UdpLayer>()->getHeader()->sport);
+                return ss->client.port == port;
+            }      
         }
 
-        return (ss->client.ip == packet->getLayer<IPv4Layer>()->getHeader()->ip_src);
+        uint32_t ip = packet->getLayer<IPv4Layer>()->getHeader()->ip_src;
+        return ss->client.ip == ip;
     }
 
+    /* Summarizes the packet-level stats 
+     *
+     * 1. Total packets
+     * 2. Number of packets per second
+     * 3. Number of bytes per second
+     * 4. Total duration
+     * 5. Maximum/Minimum/Average packet length
+     * 6. Maximum/Minimum/Average inter-arrival time
+     */
     void calCommon(CaptureConfig* config, FILE* f, Flow* flow, uint32_t pkt_cnt)
     {
         CommonStat* cs = &flow->st_common;
@@ -145,6 +174,7 @@ namespace pump
 
         if(dur == 0) dur = 0.0000001;
 
+        // Not having a packet
         if(pkt_cnt == 0)
         {
             fprintf(f, ",0");
@@ -152,38 +182,66 @@ namespace pump
             return;
         }
 
-        fprintf(f, ",%d,%.3f,%.3f,%.3f,%d,%d,%.3f",
+        fprintf(f, ",%d,%.6f,%.6f,%.6f,%d,%d,%.3f",
             pkt_cnt, (double)cs->pkt_cnt/dur, (double)cs->pktlen.s/dur, dur,
             cs->pktlen.M, cs->pktlen.m, (double)cs->pktlen.s/pkt_cnt);
         
+        // If total packet count is less than 2, it can not compute the inter-arrival time
         if(pkt_cnt < 2)
         {
             for (int i = 0; i < 3; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
             return;
         }
 
-        fprintf(f, ",%.3f,%.3f,%.3f",
+        fprintf(f, ",%.6f,%.6f,%.6f",
             time_raws(&cs->intarr_time.M), time_raws(&cs->intarr_time.m), time_raws(&cs->intarr_time.s)/(pkt_cnt-1));
     } 
 
+    /* Summarizes the Ethernet-layer-level stats 
+     *
+     * 1. Ratio of packets with ethernet padding
+     * 2. Maximum/Minimum/Average ethernet padding size
+     */
     void calEth(CaptureConfig* config, FILE* f, Flow* flow, uint32_t pkt_cnt)
     {
         EthStat* es = &flow->st_eth;
 
+        // None of the datagrams correspond to Ethernet packet
         if(pkt_cnt == 0)
         {
             for (int i = 0; i < 4; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
             return;
         }
 
+        // There were no packets having a ethernet padding
+        if(es->pad_cnt == 0)
+        {
+            fprintf(f, ",0");
+            for (int i = 0; i < 3; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
+            return;
+        } 
+
         fprintf(f, ",%.3f,%d,%d,%.3f",
             (double)es->pad_cnt/pkt_cnt, es->padlen.M, es->padlen.m, (double)es->padlen.s/pkt_cnt);
     }
 
+    /* Summarizes the IPv4-layer-level stats 
+     *
+     * 1. Differentiated Service Codepoint (Dscp)
+     * 2. Ratio of packets with DF (Don't Fragement) bit
+     * 3. Ratio of packets with MF (More Fragement) bit
+     * 4. Maximum/Minimum/Average Time to Live (TTL)
+     * 5. Ratio of packets without supporting ECN
+     * 6. Ratio of packets with supporting ECT0
+     * 7. Ratio of packets with supporting ECT1
+     * 8. Ratio of packets with supporting CE
+     * 9. Maximum/Minimum/Average Fragment offset without MF bit
+     */
     void calIPv4(CaptureConfig* config, FILE* f, Flow* flow, uint32_t pkt_cnt)
     {
         IPv4Stat* is = &flow->st_ip;
 
+        // None of the datagrams correspond to IPv4 packet
         if(pkt_cnt == 0)
         {
             for (int i = 0; i < 13; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
@@ -198,25 +256,42 @@ namespace pump
             (double)is->ecn_none_cnt/pkt_cnt, (double)is->ecn_ect0_cnt/pkt_cnt,
             (double)is->ecn_ect1_cnt/pkt_cnt, (double)is->ecn_ce_cnt/pkt_cnt);
 
+        // Load the info about last seen fragment offset
         if(flow->last_fragoff > 0)
         {
             is->fragoff_cnt++;
             update_ns<uint16_t>(&is->fragoff, flow->last_fragoff);
         }
         
+        // There were no packets having a fragment offset
         if(is->fragoff_cnt == 0)
         {
             for (int i = 0; i < 3; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
             return;
         }
+
         fprintf(f, ",%d,%d,%.3f",
             is->fragoff.M, is->fragoff.m, (is->fragoff_cnt == 0 ? 0 : (double)is->fragoff.s/is->fragoff_cnt));
     }
 
+    /* Summarizes the ICMP-layer-level stats 
+     *
+     * 1.  Ratio of packets with ICMP frame
+     * 2.  Ratio of packets with 'Echo Reply' message
+     * 3.  Ratio of packets with 'Echo Request' message
+     * 4.  Ratio of packets with 'Network Unreachable' message
+     * 5.  Ratio of packets with 'Host Unreachable' message
+     * 6.  Ratio of packets with 'Protocol Unreachable' message
+     * 7.  Ratio of packets with 'Port Unreachable' message
+     * 8.  Ratio of packets with 'Destination Host Prohibited' message
+     * 9.  Ratio of packets with 'Communication Prohibited' message
+     * 10. Ratio of packets with 'Time exceeded' message
+     */
     void calIcmp(CaptureConfig* config, FILE* f, Flow* flow, uint32_t pkt_cnt)
     {
         IcmpStat* ms = &flow->st_icmp;
 
+        // None of the datagrams correspond to ICMP packet
         if(pkt_cnt == 0)
         {
             for (int i = 0; i < 10; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
@@ -231,16 +306,24 @@ namespace pump
             (double)ms->comm_prohibited/pkt_cnt, (double)ms->time_exceeded/pkt_cnt);
     }
 
+
+    /* Summarizes the Transport-layer-level(both TCP and UDP) stats 
+     *
+     * 1. Ratio of packets with TCP/UDP payload
+     * 2. Maximum/Minimum/Average TCP/UDP payload length
+     */
     void calTransport(CaptureConfig* config, FILE* f, Flow* flow, uint32_t pkt_cnt)
     {
         TransportStat* tps = &flow->st_trans;
 
+        // None of the datagrams correspond to Transport layer packet
         if(pkt_cnt == 0)
         {
             for (int i = 0; i < 4; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
             return;
         }
 
+        // Check whether at least one packet has payload
         if(tps->has_pay == 0)
         {
             fprintf(f, ",0");
@@ -253,16 +336,58 @@ namespace pump
         }
     }
 
+    /* Summarizes the TCP-layer-level stats 
+     *
+     * 1.  Ratio of packets with ACK to a previous segment
+     * 2.  Maximum/Minimum/Average number of frame acked at once
+     * 3.  Maximum/Minimum/Average number of segment splits
+     * 4.  Maximum/Minimum/Average Round Trip TIme (RTT) to ACK
+     * 5.  Ratio of packets with nonzero ack while ACK flag is not set
+     * 6.  Ratio of acked lost packets
+     * 7.  Ratio of packets with bytes in flight
+     * 8.  Maximum/Minimum/Average bytes in flight
+     * 9.  Ratio of packets with duplicated ack
+     * 10. Ratio of fast-retransmission
+     * 11. Ratio of keep-alive
+     * 12. Ratio of keep-alive ACK
+     * 13. Ratio of packets missed some previous segments
+     * 14. Ratio of out-of-order segments
+     * 15. Ratio of packet sent bytes since last PSH flag
+     * 16. Maximum/Minimum/Average push bytes right before occurence of PSH flag
+     * 17. Ratio of retransmission
+     * 18. Maximum/Minimum/Average retransmission time-out
+     * 19. Ratio of spurious retransmission
+     * 20. Ratio of packets with full window
+     * 21. Ratio of packets with TCP window update
+     * 22. Ratio of packets with zero window
+     * 23. Ratio of zero-window-probe
+     * 24. Ratio of zero-window-probe ACK
+     * 25. Ratio of FIN/SYN/RST/PSH/ACK/URG/ECE/CWR flags
+     * 26. Ratio of packets with TCP options
+     * 27. Maximum/Minimum/Average TCP option length
+     * 28. Maximum/Minimum/Average number of TCP option
+     * 29. Ratio of packets with Selective ACK (SACK)
+     * 30. Ratio of packets with timestamp
+     * 31. Ratio of packets with TCP Fast Open (TFO)
+     * 32. Ratio of packets with multipath TCP frame
+     * 33. TCP window scalier
+     * 34. Maximum segment size
+     * 35. SACK permitted value
+     * 36. Maximum/Minimum/Average TCP window
+     * 37. Initial Round Trip Time
+     */
     void calTcp(CaptureConfig* config, FILE* f, Flow* flow, uint32_t pkt_cnt)
     {
         TcpStat* ts = &flow->st_tcp;
 
+        // None of the datagrams correspond to TCP packet
         if (pkt_cnt == 0)
         {
             for (int i = 0; i < 61; i++) fprintf(f, ",%c", config->mark_null ? '-' : '0');
             return;
         }
 
+        // Check whether at least one packet was acknowledged
         if (ts->a_ack_frame_cnt == 0)
         {
             fprintf(f, ",0");
@@ -270,7 +395,7 @@ namespace pump
         }
         else
         {
-            fprintf(f, ",%.3f,%d,%d,%.3f,%d,%d,%.3f,%.3f,%.3f,%.3f",
+            fprintf(f, ",%.3f,%d,%d,%.3f,%d,%d,%.3f,%.6f,%.6f,%.6f",
                 (double)ts->a_ack_frame_cnt/pkt_cnt,
                 ts->acked_frame_cnt.M, ts->acked_frame_cnt.m, (double)ts->acked_frame_cnt.s/ts->a_ack_frame_cnt,
                 ts->seg_frame_cnt.M, ts->seg_frame_cnt.m, (double)ts->seg_frame_cnt.s/ts->a_ack_frame_cnt,
@@ -280,6 +405,7 @@ namespace pump
         fprintf(f, ",%.3f,%.3f",
             (double)ts->a_ack_none/pkt_cnt, (double)ts->a_acked_unseen/pkt_cnt);
 
+        // Check whether there exists a byte in flight
         if (ts->a_bif_cnt == 0)
         {
             fprintf(f, ",0");
@@ -315,6 +441,7 @@ namespace pump
                 ts->push_bytes.M, ts->push_bytes.m, (double)ts->push_bytes.s/ts->a_push_cnt);
         }
 
+        // Check whether there exists a retransmission
         if(ts->a_retrans == 0)
         {
             fprintf(f, ",0");
@@ -322,7 +449,7 @@ namespace pump
         }
         else
         {
-            fprintf(f, ",%.3f,%.3f,%.3f,%.3f",
+            fprintf(f, ",%.3f,%.6f,%.6f,%.6f",
                 (double)ts->a_retrans/pkt_cnt, time_raws(&ts->rto.M), 
                 time_raws(&ts->rto.m), time_raws(&ts->rto.s)/ts->a_retrans);
         }
@@ -335,6 +462,7 @@ namespace pump
             (double)ts->f_fin/pkt_cnt, (double)ts->f_psh/pkt_cnt, (double)ts->f_rst/pkt_cnt,
             (double)ts->f_syn/pkt_cnt, (double)ts->f_urg/pkt_cnt);
 
+        // Check whether at least one packet has its TCP option field
         if(ts->has_opt == 0)
         {
             fprintf(f, ",0");
@@ -363,9 +491,12 @@ namespace pump
             ts->win.M, ts->win.m, (double)ts->win.s/pkt_cnt);
     }
 
+    // Extract the Packet-level stats 
     void parseCommon(pump::Packet* packet, Flow* fwd, Flow* rev)
     {
         timeval ref_tv = packet->getTimeStamp();
+
+        // Store the initial packet's timestamp for the calculation of inter-arrival time
         if(time_isZero(&fwd->st_common.base_tv)
         || time_diff(&ref_tv, &fwd->st_common.base_tv) < 0)
         {
@@ -374,16 +505,19 @@ namespace pump
 
         if(fwd->st_common.pkt_cnt++ > 0)
         {
+            // Inter-arrival time
             timeval delta_tv;
             time_delta(&delta_tv, &ref_tv, &fwd->st_common.last_tv);
             update_ts(&fwd->st_common.intarr_time, &delta_tv);
         }
+
         time_update(&fwd->st_common.last_tv, &ref_tv);
 
         uint16_t pk_len = packet->getDataLen();
         update_ns<uint16_t>(&fwd->st_common.pktlen, pk_len);
     }
 
+    // Extract the Ethernet-layer-level stats 
     void parseEth(pump::Packet* packet, Flow* fwd, Flow* rev)
     {
         if(!(packet->getProtocolTypes() & PROTO_TRAILER)) return;
@@ -394,11 +528,14 @@ namespace pump
         update_ns<uint16_t>(&(fwd->st_eth.padlen), padlen);
     }
 
+    // Extract the IPv4-layer-level stats 
     void parseIPv4(pump::Packet* packet, Flow* fwd, Flow* rev)
     {
         fwd->st_ip.dscp = packet->getLayer<pump::IPv4Layer>()->getHeader()->dscp;
 
         uint8_t ecn = packet->getLayer<pump::IPv4Layer>()->getHeader()->ecn;
+
+        // Explicit Congestion Notification (ECN)
         switch (ecn)
         {
             case ETHERECN_ECT0:
@@ -416,25 +553,30 @@ namespace pump
         }
 
         uint8_t flags = packet->getLayer<pump::IPv4Layer>()->getFragmentFlags();
+
         if(flags & 0x40) fwd->st_ip.df_cnt++;
         if(flags & 0x20) fwd->st_ip.mf_cnt++;
 
         fwd->last_fragoff = packet->getLayer<pump::IPv4Layer>()->getFragmentOffset();
+
         if(!(flags & 0x20) && fwd->last_fragoff)
         { 
             update_ns<uint16_t>(&(fwd->st_ip.fragoff), fwd->last_fragoff);
             fwd->st_ip.fragoff_cnt++;
         }
+
         uint8_t ttl = packet->getLayer<pump::IPv4Layer>()->getHeader()->ttl;
         update_ns<uint8_t>(&(fwd->st_ip.ttl), ttl);
     }
 
+    // Extract the ICMP-layer-level stats 
     void parseIcmp(pump::Packet* packet, Flow* fwd, Flow* rev)
     {
         fwd->st_icmp.icmp_cnt++;
         uint8_t type = packet->getLayer<pump::IcmpLayer>()->getMessageType();
         uint8_t code = packet->getLayer<pump::IcmpLayer>()->getMessageCode();
 
+        // ICMP message type
         switch (type)
         {
             case ICMP_ECHO_REPLY:
@@ -476,6 +618,7 @@ namespace pump
         }
     }
 
+    // Extract the TCP-layer-level stats 
     void parseTcp(pump::Packet* packet, Stream* ss, Flow* fwd, Flow* rev)
     {
         timeval ref_tv = packet->getTimeStamp();
@@ -505,11 +648,14 @@ namespace pump
         size_t seglen = packet->getLayer<pump::TcpLayer>()->getLayerPayloadSize();
 
         size_t optlen = packet->getLayer<pump::TcpLayer>()->getOptionLen();
+
+        // TCP options
         if(optlen)
         {
             uint8_t optcnt = packet->getLayer<pump::TcpLayer>()->getOptionCount();
             update_ns<uint8_t>(&(fwd->st_tcp.optcnt), optcnt);
             uint8_t* wscale = packet->getLayer<pump::TcpLayer>()->getOption(TCPOPT_WINSCALE);
+
             if(wscale != 0)
             {
                 fwd->win_scale = *(wscale + 2);
@@ -551,40 +697,36 @@ namespace pump
             update_ns<uint8_t>(&fwd->st_tcp.optlen, optlen);
         }
 
+        // If this is the first packet for this direction,
+        // we need to store the base sequence number
+        // This enables us to calculate the relative seq/ack numbers,
+        // which is helpful for the advanced analysis of the given segment
         if (!(fwd->flags & F_BASE_SEQ_SET))
         {
-            if (isSYN)
-            {
-                fwd->baseseq = seq;
-                fwd->flags |= isACK ? F_SAW_SYNACK : F_SAW_SYN;
-            }
-            else
-            {
-                fwd->baseseq = seq - 1;
-            }
+            fwd->baseseq = seq;
             fwd->flags |= F_BASE_SEQ_SET;
         }
 
+        // Compute the relative seq/ack numbers
         seq -= fwd->baseseq;
         ack -= rev->baseseq;
-
-        if (!(rev->flags & F_BASE_SEQ_SET) && isACK)
-        {
-            rev->baseseq = ack - 1;
-            rev->flags |= F_BASE_SEQ_SET;
-        }
 
         if (isACK)
         {
             rev->valid_bif = true;
         }
 
-        // ACK Non-Zero
+        // Set 'ACK Non-Zero' when
+        // (1) ACK is set
+        // (2) ack number is not zero
         if(isACK && ack > 0) fwd->st_tcp.a_ack_none++;
 
         fwd->a_flags = 0;
 
-        // ZERO WINDOW PROBE
+        // Set 'ZERO WINDOW PROBE' when
+        // (1) segment size is one 
+        // (2) sequence number is equal to the next expected sequence number
+        // (3) last seen window size in the reverse direction was zero 
         if (seglen == 1
         && seq == fwd->nextseq
         && rev->win == 0)
@@ -594,7 +736,9 @@ namespace pump
             goto retrans_check;
         }
 
-        // ZERO WINDOW
+        // Set 'ZERO WINDOW' when
+        // (1) window size is zero
+        // (2) none of SYN, FIN, and RST or set
         if (win == 0
         && (!(isRST || isFIN || isSYN)))
         {
@@ -602,7 +746,9 @@ namespace pump
             fwd->st_tcp.a_zero_window++;
         }
 
-        // LOST SEGMENT
+        //  Set 'LOST SEGMENT' when
+        // (1) current sequence number is greater than the next expected sequence number
+        // (2) RST is not set
         if (fwd->nextseq
         && seq > fwd->nextseq
         && !isRST)
@@ -612,7 +758,10 @@ namespace pump
             fwd->valid_bif = false;
         }
 
-        // KEEP ALIVE
+        // Set 'KEEP ALIVE' when
+        // (1) segment size is zero or one 
+        // (2) sequence number is one byte less than the next expected sequence number
+        // (3) none of SYN, FIN, or RST are set
         if (seglen <= 1
         && !(isFIN || isSYN || isRST)
         && fwd->nextseq - 1 == seq)
@@ -621,7 +770,11 @@ namespace pump
             fwd->st_tcp.a_keep_alive++;
         }
 
-        // WINDOW UPDATE
+        // Set 'WINDOW UPDATE' when
+        // (1) segment size is zero
+        // (2) window size is non-zero and not equal to the last seen window size
+        // (3) sequence number is equal to the next expected sequence number
+        // (4) none of SYN, FIN, or RST are set
         if (seglen == 0
         && win
         && win != fwd->win
@@ -633,7 +786,11 @@ namespace pump
             fwd->st_tcp.a_window_update++;
         }
 
-        // WINDOW FULL
+        // Set 'WINDOW FULL' when
+        // (1) segment size is non-zero
+        // (2) saw the window size in the reverse direction
+        // (3) segment size exceeds the window size in the reverse direction
+        // (4) none of SYN, FIN, or RST are set
         if (seglen > 0
         && rev->win_scale != -1
         && seq + seglen == (rev->lastack + (rev->win << (rev->win_scale == -2 ? 0 : rev->win_scale)))
@@ -643,7 +800,13 @@ namespace pump
             fwd->st_tcp.a_window_full++;
         }
 
-        // KEEP ALIVE ACK
+        // Set 'KEEP ALIVE ACK' when
+        // (1) segment size is zero
+        // (2) window size is non-zero and hasn’t changed
+        // (3) current sequence number is the same as the next expected sequence number
+        // (4) current acknowledgement number is the same as the last-seen acknowledgement number
+        // (5) most recently seen packet in the reverse direction was a keepalive
+        // (6) none of SYN, FIN, or RST are set
         if (seglen==0
         && win
         && win == fwd->win
@@ -657,7 +820,13 @@ namespace pump
             goto retrans_check;
         }
 
-        // ZERO WINDOW PROBE ACK
+        // Set 'ZERO WINDOW PROBE ACK' when
+        // (1) segment size is zero
+        // (2) window size is zero
+        // (3) current sequence number is the same as the next expected sequence number
+        // (4) current acknowledgement number is the same as the last-seen acknowledgement number
+        // (5) most recently seen packet in the reverse direction was a zero window probe
+        // (6) none of SYN, FIN, or RST are set
         if(seglen == 0
         && win == 0
         && win == fwd->win
@@ -671,7 +840,12 @@ namespace pump
             goto retrans_check;
         }
 
-        // DUPLICATE ACK
+        // Set 'DUPLICATE ACK' when
+        // (1) segment size is zero
+        // (2) window size is non-zero and hasn’t changed
+        // (3) current sequence number is the same as the next expected sequence number
+        // (4) current acknowledgement number is the same as the last-seen acknowledgement number
+        // (5) none of SYN, FIN, or RST are set
         if (seglen==0
         && win
         && win == fwd->win
@@ -691,7 +865,10 @@ namespace pump
             fwd->dup_ack_cnt = 0;
         }
 
-        // ACKED UNSEEN
+        // Set 'ACKED UNSEEN' when
+        // (1) the expected next acknowledgement number is set for the reverse direction
+        // (2) current acknowledgement number is tlarger the last-seen acknowledgement number
+        // (3) ACK is set
         if (rev->max_seq_acked
         && ack > rev->max_seq_acked
         && isACK) 
@@ -701,7 +878,9 @@ namespace pump
             fwd->st_tcp.a_acked_unseen++;
         }
 
-        // RETRANSMISSION/FAST RETRANSMISSION/OUT OF ORDER
+        // Set one of the 'RETRANSMISSION'/'FAST RETRANSMISSION'/'OUT OF ORDER' when
+        // (1) segment size is non-zero or the SYN or FIN is set
+        // (2) not a keepalive packet
         if ((seglen > 0 || isSYN || isFIN)
         && !(fwd->a_flags & TCP_A_KEEP_ALIVE))
         {
@@ -711,7 +890,13 @@ namespace pump
 
             int64_t t = time_raw(&rev->lastack_time);
 
-            // FAST RETRANSMISSION
+            // Set 'FAST RETRANSMISSION' when
+            // (1) next expected sequence number is greater than the current sequence number
+            // (2) segment size is less than 2
+            //     or the next expected sequence number is not equal to the current sequence number
+            // (3) at least two duplicate ACKs in the reverse direction
+            // (4) current sequence number equals the next expected acknowledgement number
+            // (5) saw the last acknowledgement less than 20ms ago
             if (seq_not_advanced
             && rev->dup_ack_cnt >= 2
             && rev->lastack == seq
@@ -725,6 +910,13 @@ namespace pump
             int64_t ooo_thres = time_isZero(&ss->init_rtt) ? 3000 : time_raw(&ss->init_rtt);
             t = time_raw(&fwd->nextseq_time);
 
+            // Set 'OUT OF ORDER' when
+            // (1) next expected sequence number is greater than the current sequence number
+            // (2) segment size is less than 2
+            //     or the next expected sequence number is not equal to the current sequence number
+            // (3) last segment arrived within the Out-Of-Order RTT threshold
+            //     (threshold is either the initial RTT if it is present, or the default value of 3ms)
+            // (4) next expected sequence number and the next sequence number differ
             if (seq_not_advanced
             && t < ooo_thres
             && fwd->nextseq != seq + seglen )
@@ -734,6 +926,10 @@ namespace pump
                 goto seq_update;
             }
 
+            // Set 'SPURIOUS RETRANSMISSION' when
+            // (1) segment length is greater than zero
+            // (2) last-seen acknowledgement number has been set
+            // (3) next sequence number is less than or equal to the last-seen acknowledgement number
             if (seglen > 0
             && rev->lastack
             && seq + seglen <= rev->lastack)
@@ -743,6 +939,10 @@ namespace pump
                 goto seq_update;
             }
 
+            // Set a geberic 'RETRANSMISSION' when
+            // (1) next expected sequence number is greater than the current sequence number
+            // (2) segment size is less than 2
+            //     or the next expected sequence number is not equal to the current sequence number
             if (seq_not_advanced) 
             {
                 fwd->a_flags |= TCP_A_RETRANSMISSION;
@@ -754,12 +954,15 @@ namespace pump
 
         seq_update:
 
+        // next sequence number is seglen bytes away, plus SYN/FIN which counts as one byte
         uint32_t nextseq = seq + seglen;
 
         tcp_unacked *ual = NULL;
 
         if ((seglen || isSYN || isFIN))
         {
+            // Store the unacknowledged segments temporarily
+            // It will be utilized when we count the number of ACKED packets later
             ual = (tcp_unacked*)malloc(sizeof(tcp_unacked));
             ual->next = fwd->lastseg;
             fwd->lastseg = ual;
@@ -780,6 +983,10 @@ namespace pump
             ual->nextseq = nextseq;
         }
 
+        // Store the highest number seen so far for nextseq so we can detect
+        // when we receive segments that arrive with a "hole"
+        // If we don't have anything since before, just store what we got
+        // ZERO WINDOW PROBEs are special and don't really advance the next sequence number
         if ((nextseq > fwd->nextseq || !fwd->nextseq) 
         && !(fwd->a_flags & TCP_A_ZERO_WINDOW_PROBE))
         {
@@ -787,6 +994,8 @@ namespace pump
             time_update(&fwd->nextseq_time, &ref_tv);   
         }
 
+        // Store the highest sequence number temporarily
+        // It will be beneficial for finding 'ACKED UNSEEN' packets
         if((seq == fwd->max_seq_acked || !fwd->max_seq_acked)
         && !(fwd->a_flags & TCP_A_ZERO_WINDOW_PROBE)) 
         {
@@ -801,11 +1010,14 @@ namespace pump
         uint32_t ack_cnt=0;
         tcp_unacked *prevual = NULL;
 
+        // Check the acknowledged segments
         ual = rev->lastseg;
+
         while (ual)
         {
             tcp_unacked *tmpual;
 
+            // If this ack matches the segment, process accordingly
             if (ack == ual->nextseq)
             {
                 timeval delta_tv;
@@ -813,11 +1025,13 @@ namespace pump
                 update_ts(&rev->st_tcp.ack_rtt, &delta_tv);
                 rev->st_tcp.a_ack_frame_cnt++;
             }
+            // If this acknowledges part of the segment, adjust the segment info for the acked part
             else if (ack > ual->seq && ack <= ual->nextseq)
             {
                 ual->seq = ack;
                 continue;
             }
+            // If this acknowledges a segment prior to this one, leave this segment alone and move on
             else if (ual->nextseq > ack)
             {
                 prevual = ual;
@@ -825,6 +1039,7 @@ namespace pump
                 continue;
             }
 
+            // This segment is old, or an exact match.  Delete the segment from the list
             ack_cnt++;
             tmpual = ual->next;
 
@@ -848,7 +1063,9 @@ namespace pump
             update_ns<uint32_t>(&rev->st_tcp.seg_frame_cnt, ack_cnt+rev->seg_idx);
         }
 
+        // Check how many bytes of data are there in flight after this frame was sent
         ual = fwd->lastseg;
+
         if (seglen != 0 
         && ual 
         && fwd->valid_bif)
@@ -864,10 +1081,12 @@ namespace pump
                 {
                     last_seq = ual->nextseq - fwd->baseseq;
                 }
+
                 if (ual->seq - fwd->baseseq < first_seq) 
                 {
                     first_seq = ual->seq - fwd->baseseq;
                 }
+
                 ual = ual->next;
             }
             in_flight = last_seq - first_seq;
@@ -897,6 +1116,7 @@ namespace pump
                 {
                     fwd->push_bytes += seglen;
                 }
+
                 fwd->push_set_last = true;
             }
             else if (fwd->push_set_last)
@@ -920,6 +1140,7 @@ namespace pump
             time_delta(&(ss->init_rtt), &ref_tv, &(ss->last_syn));
         }
 
+        // Re-calculate window size, based on scaling factor
         if(isSYN)
         {
             if(fwd->win_scale == -1)
@@ -934,6 +1155,7 @@ namespace pump
         }
     }
 
+    // Extract the UDP-layer-level stats 
     void parseUdp(pump::Packet* packet, Flow* fwd, Flow* rev)
     {
         size_t seglen = packet->getLayer<pump::UdpLayer>()->getLayerPayloadSize();
@@ -956,6 +1178,8 @@ namespace pump
         tr_pkt_cnt = 0;
         tr_flow_cnt = 0;
         tr_totalbytes = 0;
+
+        // Set handler for Ctrl+C key
         registerEvent();
     }
 
@@ -981,15 +1205,16 @@ namespace pump
 
         if(packet->isTypeOf(PROTO_TCP))
         {
-            client.port = (uint16_t)ntohs(packet->getLayer<pump::TcpLayer>()->getHeader()->sport);
-            server.port = (uint16_t)ntohs(packet->getLayer<pump::TcpLayer>()->getHeader()->dport);
+            client.port = ntohs(packet->getLayer<pump::TcpLayer>()->getHeader()->sport);
+            server.port = ntohs(packet->getLayer<pump::TcpLayer>()->getHeader()->dport);
         }
         else
         {
-            client.port = (uint16_t)ntohs(packet->getLayer<pump::UdpLayer>()->getHeader()->sport);
-            server.port = (uint16_t)ntohs(packet->getLayer<pump::UdpLayer>()->getHeader()->dport);
+            client.port = ntohs(packet->getLayer<pump::UdpLayer>()->getHeader()->sport);
+            server.port = ntohs(packet->getLayer<pump::UdpLayer>()->getHeader()->dport);
         }
 
+        // allocate a structure to hold bidirectional information of the new TCP stream 
         tr_smap[tr_flow_cnt] = {.proto = 0,
                                 .init_rtt = {0, 0},
                                 .last_syn = {0, 0},
@@ -1005,19 +1230,29 @@ namespace pump
 
         bool isSyn = isTcpSyn(packet);
 
+        // We haven't seen a packet with this converstation yet, so create one
         if (tr_flowtable.find(hash) == tr_flowtable.end())
         {
+            // We do not care about truncated flow
+            // TCP conversation must begin with 3-way TCP handshaking 
             if(!isSyn && packet->isTypeOf(PROTO_TCP)) return -1;
 
+            // Add it to the list of conversations
             tr_flowtable[hash] = addNewStream(packet);
             tr_initiated[hash] = true;
         }
+        // Look up the conversation
         else
         {
+            // If we encounter an SYN packet with a hash value already stored in the flow table,
+            // this indicate a new session, so the flow table assigns a new stream
+            // index to such conversation unless the we had seen SYN as last packet,
+            // which is an indication of SYN retransmission
             if (isSyn && tr_initiated[hash] == false)
             {
                 tr_flowtable[hash] = addNewStream(packet);
             }
+
             tr_initiated[hash] = isSyn;
         }
         return tr_flowtable[hash];
@@ -1025,15 +1260,20 @@ namespace pump
 
     void Tracker::parsePacket(pump::Packet* packet, CaptureConfig* config)
     {
-        timeval ref_tv = packet->getTimeStamp();
-        uint32_t pk_len = packet->getDataLen();
-        if (tr_pkt_cnt == 0) time_update(&tr_base_tv, &ref_tv);
-        int64_t delta_time = time_diff(&ref_tv, &tr_base_tv);
-
+        timeval curr_tv;
         gettimeofday(&curr_tv, NULL);
 
+        uint32_t pk_len = packet->getDataLen();
+        int64_t delta_time = time_diff(&curr_tv, &tr_init_tv);
+
+        timeval ref_tv = packet->getTimeStamp();
+
+        if (tr_pkt_cnt == 0) time_update(&tr_base_tv, &ref_tv);
+
+        // Stop reading if we have the maximum number of packets
+        // or the capture timer is out
         if (tr_pkt_cnt >= config->maxPacket 
-        || time_diff(&ref_tv, &tr_base_tv)/1000000 >= (int64_t)config->maxTime)
+        || time_diff(&ref_tv, &tr_init_tv)/1000000 >= (int64_t)config->maxTime)
         {
             raise(SIGINT);
             return;
@@ -1042,10 +1282,13 @@ namespace pump
         tr_totalbytes += pk_len;
         tr_pkt_cnt++;
 
+        // Show the capturing progress 
         if (delta_time == 0 || time_diff(&ref_tv, &tr_print_tv) >= 31250)
         {
             rusage r_usage;
             getrusage(RUSAGE_SELF, &r_usage);
+
+            // Report an out-of-memory condition and abort
             if(r_usage.ru_maxrss > MEMORY_LIMIT)
                 EXIT_WITH_RUNERROR("###ERROR : The process consume too much memory");
 
@@ -1059,12 +1302,15 @@ namespace pump
 
         int ss_idx = getStreamNumber(packet);
 
+        // A packet in a truncated flow
         if (ss_idx == -1) return;
 
         Stream* ss = &(tr_smap[ss_idx]);
 
         bool peer = isClient(packet, ss);
 
+        // Get the data structures containing flow-level information in
+        // the same/reverse direction as the current packet
         Flow* fwd = &(peer ? ss->client : ss->server);
         Flow* rev = &(peer ? ss->server : ss->client);
 
@@ -1109,7 +1355,7 @@ namespace pump
 
     void Tracker::saveStats(CaptureConfig* config)
     {
-        std::map<uint32_t, Stream>::iterator mit;
+        std::map<uint32_t, Stream>::iterator it;
 
         FILE* f = fopen(config->outputFileTo.c_str(), "w");
         if (f == NULL)
@@ -1171,18 +1417,20 @@ namespace pump
                     "tcp_win_rev_max, tcp_win_rev_min, tcp_win_rev_avg,"
                     "tcp_init_rtt\n");
 
-        for(mit = tr_smap.begin(); mit != tr_smap.end(); mit++)
+        for(it = tr_smap.begin(); it != tr_smap.end(); it++)
         {
+            // User wants to stop the processing, close the merge Mod
             if(tr_stop) stop_signal_callback_handler(SIGINT);
 
             char cIP[16], sIP[16];
 
-            uint32_t ss_idx = mit->first;
-            Stream* ss = &(mit->second);
+            uint32_t ss_idx = it->first;
+            Stream* ss = &(it->second);
 
             timeval ref_tv;
             gettimeofday(&ref_tv, NULL);
 
+            // Show the merging progress
             if (ss_idx == 0 || ss_idx + 1 == tr_flow_cnt || time_diff(&ref_tv, &tr_print_tv) >= 31250)
             {
                 print_progressA(ss_idx + 1, tr_flow_cnt);
@@ -1192,8 +1440,8 @@ namespace pump
             Flow* fwd = &ss->client;
             Flow* rev = &ss->server;
 
-            sprintf(cIP, "%d.%d.%d.%d", (fwd->ip >> 24) & 0xFF, (fwd->ip >> 16) & 0xFF, (fwd->ip >>  8) & 0xFF, (fwd->ip) & 0xFF);
-            sprintf(sIP, "%d.%d.%d.%d", (rev->ip >> 24) & 0xFF, (rev->ip >> 16) & 0xFF, (rev->ip >>  8) & 0xFF, (rev->ip) & 0xFF);
+            parseIPV4(cIP, fwd->ip);
+            parseIPV4(sIP, rev->ip);
 
             fprintf(f, "%s:%d,%s:%d,%.8d,", cIP, fwd->port, sIP, rev->port, ss_idx);
 
@@ -1208,9 +1456,23 @@ namespace pump
             uint32_t s_pkt = rev->st_common.pkt_cnt;
             uint32_t t_pkt = c_pkt + s_pkt;
 
-            double t_dur = time_tot(&fwd->st_common.base_tv, &rev->st_common.base_tv, &fwd->st_common.last_tv, &rev->st_common.last_tv);
+            double t_dur;
+            
+            if (c_pkt == 0)
+            {
+                t_dur = time_diff(&rev->st_common.last_tv, &rev->st_common.base_tv);
+            }
+            else if (s_pkt == 0)
+            {
+                t_dur = time_diff(&fwd->st_common.last_tv, &fwd->st_common.base_tv);
+            }
+            else
+            {
+                t_dur = time_tot(&fwd->st_common.base_tv, &rev->st_common.base_tv,
+                                 &fwd->st_common.last_tv, &rev->st_common.last_tv);
+            }
 
-            fprintf(f, ",%d,%.3f", t_pkt, t_dur/1000000);
+            fprintf(f, ",%d,%.6f", t_pkt, t_dur/1000000);
 
             calCommon(config, f, fwd, c_pkt);
             calCommon(config, f, rev, s_pkt);
@@ -1230,17 +1492,16 @@ namespace pump
             calTcp(config, f, fwd, ss->proto & PROTO_TCP ? c_pkt : 0);
             calTcp(config, f, rev, ss->proto & PROTO_TCP ? s_pkt : 0);
 
-            if(ss->proto & PROTO_TCP)
+            if((ss->proto & PROTO_TCP) && 
+            !time_isZero(&ss->init_rtt))
             {
-                if(time_isZero(&ss->init_rtt))
-                {
-                    fprintf(f, ",%c", config->mark_null ? '-' : '0');
-                }
-                else
-                {
-                    fprintf(f, ",%.3f", time_raws(&ss->init_rtt));
-                } 
+                fprintf(f, ",%.6f", time_raws(&ss->init_rtt));
             }
+            else
+            {
+                fprintf(f, ",%c", config->mark_null ? '-' : '0');
+            }
+    
             fprintf(f, "\n");
                 
         }

@@ -2,13 +2,11 @@
  *
  * routines for the TCP packet parsing
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #ifndef PUMP_LAYER_TCP
 #define PUMP_LAYER_TCP
-
-#include <sys/time.h>
 
 #include "layer.h"
 
@@ -89,7 +87,7 @@ namespace pump
 
             TcpLayer(uint8_t* data, size_t datalen, Layer* prev_layer);
 
-            ~TcpLayer();
+            ~TcpLayer() {};
 
             void dissectData();
 

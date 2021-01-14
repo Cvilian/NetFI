@@ -2,7 +2,7 @@
  * 
  * routines to catch several errors, sudden cessations
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #include <time.h>

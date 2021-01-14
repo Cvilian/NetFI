@@ -2,7 +2,7 @@
  *
  * routines for the ICMP packet parsing
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #ifndef PUMP_LAYER_ICMP
@@ -101,6 +101,8 @@ namespace pump
         public:
 
             IcmpLayer(uint8_t* data, size_t datalen, Layer* prev_layer) : Layer(data, datalen, prev_layer) { l_proto = PROTO_ICMP; }
+
+            virtual ~IcmpLayer() {};
 
             void dissectData();
 

@@ -2,7 +2,7 @@
  * 
  * routines for the TCP packet parsing
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #include <stdlib.h>
@@ -45,14 +45,6 @@ namespace pump
             curr_opt->prev = l_opt;
             l_opt = curr_opt;
             l_optcnt++;
-        }
-    }
-
-    TcpLayer::~TcpLayer()
-    {
-        while(l_opt != NULL)
-        {
-            free(l_opt);
         }
     }
 

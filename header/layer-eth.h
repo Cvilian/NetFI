@@ -2,15 +2,13 @@
  *
  * routines for the ethernet packet parsing
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #ifndef PUMP_LAYER_ETH
 #define PUMP_LAYER_ETH
 
 #include <string.h>
-
-#include <map>
 
 #include "layer.h"
 
@@ -36,6 +34,8 @@ namespace pump
         public:
 
             EthLayer(uint8_t* data, size_t datalen, Layer* prev_layer) : Layer(data, datalen, prev_layer) { l_proto = PROTO_ETHERNET; }
+
+            virtual ~EthLayer() {};
 
             void dissectData();
 

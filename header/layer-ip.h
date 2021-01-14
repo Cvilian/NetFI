@@ -1,8 +1,8 @@
 /* layer-ip.h
  *
- * routines for the IP packet parsing
+ * routines for the IPv4 packet parsing
  *  
- * NetFI - a fast and simple tool to analyze the network flow (Internet Protocol family) 
+ * NetFI - a fast and simple tool to analyze the network flow 
  */
 
 #ifndef PUMP_LAYER_IP
@@ -27,6 +27,7 @@
 
 static const std::map<uint8_t, std::string> dscp_type = {
     { 0, "Default" },
+    { 1, "LE" },
     { 8, "CS1" },
     { 10, "AF11" },
     { 12, "AF12" },
@@ -107,6 +108,8 @@ namespace pump
         public:
 
             IPv4Layer(uint8_t* data, size_t datalen, Layer* prev_layer);
+
+            virtual ~IPv4Layer() {};
 
             bool isFragment() const;
 
