@@ -20,9 +20,11 @@ namespace pump
         l_optcnt = 0;
 
         size_t optlen = getOptionLen();
+
         if(optlen == 0) return;
 
         uint8_t* opt_base = l_data + sizeof(tcp_hdr);
+
         while(optlen > 0)
         {
             uint8_t type = *opt_base;
@@ -41,10 +43,13 @@ namespace pump
                 curr_opt->data = opt_base + 2;
                 optlen -= curr_opt->len;
             }
+
             opt_base += curr_opt->len;
             curr_opt->prev = l_opt;
             l_opt = curr_opt;
             l_optcnt++;
+
+            if (type == TCPOPT_EOL) break;
         }
     }
 
