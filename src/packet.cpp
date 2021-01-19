@@ -43,6 +43,29 @@ namespace pump
                 }	
             }
         }
+        else if (linktype == LINKTYPE_RAW 
+        || linktype == LINKTYPE_DLT_RAW 
+        || linktype == LINKTYPE_DLT_RAW_BSD)
+        {
+            uint8_t ip_ver = pk_data[0] & 0xf0;
+
+            if (ip_ver == 0x40)
+            {
+                return IPv4Layer::isValidLayer(pk_data, pk_datalen)
+                    ? static_cast<Layer*>(new IPv4Layer(pk_data, pk_datalen, NULL))
+                    : static_cast<Layer*>(new DataLayer(pk_data, pk_datalen, NULL));
+            }
+            else
+            {
+                return new DataLayer(pk_data, pk_datalen, NULL);
+            }
+        }
+        else if (linktype == LINKTYPE_IPV4)
+        {
+            return IPv4Layer::isValidLayer(pk_data, pk_datalen)
+                    ? static_cast<Layer*>(new IPv4Layer(pk_data, pk_datalen, NULL))
+                    : static_cast<Layer*>(new DataLayer(pk_data, pk_datalen, NULL));
+        }
 
         return new DataLayer(pk_data, pk_datalen, NULL);
     }
@@ -114,13 +137,6 @@ namespace pump
             delete curr_layer;
             curr_layer = next_layer;
         }
-        
-        /*
-        if (pk_data != 0 && pk_delete_data)
-        {
-            delete[] pk_data;
-        }
-        */
     }
 
 }

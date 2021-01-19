@@ -16,6 +16,10 @@
 #include "layer.h"
 
 #define LINKTYPE_ETHERNET          1
+#define LINKTYPE_DLT_RAW          12
+#define LINKTYPE_DLT_RAW_BSD      14
+#define LINKTYPE_RAW             101
+#define LINKTYPE_IPV4            228
 
 #define MAX_PACKET_SIZE        65536
 

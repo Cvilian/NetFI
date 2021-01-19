@@ -1016,6 +1016,7 @@ namespace pump
         while (ual)
         {
             tcp_unacked *tmpual;
+            WRITE_LOG("└──ACK check");
 
             // If this ack matches the segment, process accordingly
             if (ack == ual->nextseq)
@@ -1077,6 +1078,7 @@ namespace pump
 
             while (ual)
             {
+                WRITE_LOG("└──BIF check");
                 if (ual->nextseq - fwd->baseseq > last_seq)
                 {
                     last_seq = ual->nextseq - fwd->baseseq;
@@ -1221,6 +1223,7 @@ namespace pump
                                 .client = client,
                                 .server = server};
 
+        WRITE_LOG("└──New flow : %d (%d)", tr_pkt_cnt, tr_flow_cnt);
         return tr_flow_cnt++;
     }
 
@@ -1235,7 +1238,11 @@ namespace pump
         {
             // We do not care about truncated flow
             // TCP conversation must begin with 3-way TCP handshaking 
-            if(!isSyn && packet->isTypeOf(PROTO_TCP)) return -1;
+            if(!isSyn && packet->isTypeOf(PROTO_TCP))
+            {
+                WRITE_LOG("└──Truncated flow : %d", tr_pkt_cnt);
+                return -1;
+            }
 
             // Add it to the list of conversations
             tr_flowtable[hash] = addNewStream(packet);
@@ -1255,6 +1262,7 @@ namespace pump
 
             tr_initiated[hash] = isSyn;
         }
+
         return tr_flowtable[hash];
     }
 
