@@ -24,7 +24,7 @@ $ sudo apt-get install libpcap-dev
 $ sudo apt-get update
 $ sudo apt-get upgrade
 
-$ git clone https://github.com/Cvilian/NetFI
+$ git clone https://github.com/cvlian/NetFI
 $ cd NetFI
 $ sudo make all
 ```
